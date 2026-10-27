@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мой кроссворд</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101827;color:white;font-family:Arial,sans-serif}
+header{text-align:center;padding:20px 10px;background:#1e293b}
+h1{color:#60a5fa;font-size:25px}
+main{max-width:900px;margin:auto;padding:12px}
+.panel{background:#1e293b;border-radius:12px;padding:15px;margin-bottom:15px}
+button,select,textarea{font-size:16px;border-radius:8px;padding:11px;margin:4px}
+button{border:0;background:#2563eb;color:white;cursor:pointer}
+textarea,select{width:100%;background:#0f172a;color:white;border:1px solid #64748b}
+.layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#grid{display:grid;gap:2px;width:max-content;max-width:100%;margin:15px auto}
+.cell{width:29px;height:29px;position:relative;background:white;border:1px solid #94a3b8}
+.cell input{width:100%;height:100%;border:0;padding:0;text-align:center;font-size:17px;font-weight:bold;text-transform:uppercase;background:transparent;color:#111827;outline:none;border-radius:0}
+.cell:focus-within{background:#93c5fd;outline:2px solid #60a5fa;z-index:2}
+.cell .num{position:absolute;top:0;left:2px;font-size:8px;color:#334155;pointer-events:none}
+.block{width:29px;height:29px;background:#020617}
+.clue{padding:10px;background:#0f172a;margin:5px 0;border-radius:7px;cursor:pointer}
+.clue.active{background:#2563eb}
+#status{color:#93c5fd;line-height:1.5}
+.keyboard{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.keyboard button{padding:12px 0;margin:0;font-weight:bold}
+.small{color:#cbd5e1;font-size:13px}
+@media(max-width:650px){
+.layout{grid-template-columns:1fr}
+.cell,.block{width:25px;height:25px}
+.cell input{font-size:14px}
+.keyboard{grid-template-columns:repeat(7,minmax(0,1fr))}
+}
+</style>
+</head>
+<body>
+<header>
+<h1>🧩 Генератор кроссвордов</h1>
+<p>Создавай, заполняй и разгадывай!</p>
+</header>
+
+<main>
+<section class="panel">
+<h3>Настройки</h3>
+<select id="topic">
+<option value="general">Общие знания</option>
+<option value="it">Информатика</option>
+<option value="space">Космос</option>
+<option value="nature">Природа</option>
+<option value="custom">Мои слова</option>
+</select>
+<div id="customBox" hidden>
+<p class="small">Пиши каждое слово с подсказкой через тире.</p>
+<textarea id="custom" placeholder="КОМПЬЮТЕР — Электронное устройство&#10;ИНТЕРНЕТ — Мировая сеть"></textarea>
+</div>
+<button id="generate">Создать кроссворд</button>
+<button id="check">Проверить</button>
+<button id="answers">Показать ответы</button>
+<button id="clear">Очистить</button>
+<p id="status">Нажми «Создать кроссворд».</p>
+</section>
+
+<div class="layout">
+<section class="panel">
+<h3>✏️ Заполняй клетки</h3>
+<p class="small">Нажми на белую клетку и введи букву. На телефоне откроется клавиатура.</p>
+<div id="grid"></div>
+<div class="keyboard" id="keyboard"></div>
+<p class="small">Если клавиатура телефона не появилась, используй буквы ниже.</p>
+</section>
+
+<section class="panel">
+<h3>➡️ По горизонтали</h3>
+<div id="across"></div>
+<h3>⬇️ По вертикали</h3>
+<div id="down"></div>
+</section>
+</div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const N=15;
+
+const BANK={
+general:[
+["СОЛНЦЕ","Звезда, освещающая Землю"],
+["ШКОЛА","Место, где учатся"],
+["КНИГА","Источник знаний"],
+["РЕКА","Поток воды"],
+["ГОРОД","Большой населённый пункт"],
+["ЗИМА","Холодное время года"],
+["ПЛАНЕТА","Небесное тело вокруг звезды"],
+["ДРУЖБА","Отношения друзей"]
+],
+it:[
+["КОМПЬЮТЕР","Электронное устройство"],
+["ИНТЕРНЕТ","Глобальная сеть"],
+["ПАРОЛЬ","Секретный код для входа"],
+["БРАУЗЕР","Программа для сайтов"],
+["ПРОЦЕССОР","Выполняет команды"],
+["АЛГОРИТМ","Порядок действий"],
+["ПИКСЕЛЬ","Элемент изображения"]
+],
+space:[
+["КОСМОС","Пространство за атмосферой"],
+["РАКЕТА","Аппарат для космического полёта"],
+["ЗВЕЗДА","Раскалённое небесное тело"],
+["ЛУНА","Спутник Земли"],
+["МАРС","Красная планета"],
+["ОРБИТА","Путь спутника вокруг планеты"],
+["КОМЕТА","Небесное тело с хвостом"]
+],
+nature:[
+["БАБОЧКА","Насекомое с крыльями"],
+["ДЕРЕВО","Растение с древесным стволом"],
+["ОКЕАН","Огромный водный массив"],
+["РАДУГА","Цветная дуга после дождя"],
+["МЕДВЕДЬ","Крупное лесное животное"],
+["РОМАШКА","Цветок с белыми лепестками"],
+["ЗЕМЛЯ","Наша планета"]
+]
+};
+
+let board, words=[], selected=null, direction="across", showAnswers=false;
+
+function blankBoard(){
+ return Array.from({length:N},()=>Array(N).fill(null));
+}
+function cell(r,c){
+ return r>=0&&c>=0&&r<N&&c<N?board[r][c]:null;
+}
+function canPlace(word,r,c,dir){
+ let dr=dir==="down"?1:0,dc=dir==="across"?1:0;
+ let er=r+dr*(word.length-1),ec=c+dc*(word.length-1);
+ if(!cell(r,c)||!cell(er,ec))return -1;
+ if(cell(r-dr,c-dc)||cell(er+dr,ec+dc))return -1;
+ let crosses=0;
+ for(let i=0;i<word.length;i++){
+  let rr=r+dr*i,cc=c+dc*i,old=cell(rr,cc);
+  if(old&&old.letter!==word[i])return -1;
+  if(old){crosses++;continue;}
+  if(dir==="across"&&(cell(rr-1,cc)||cell(rr+1,cc)))return -1;
+  if(dir==="down"&&(cell(rr,cc-1)||cell(rr,cc+1)))return -1;
+ }
+ return crosses;
+}
+function put(item,r,c,dir){
+ let [word,clueText]=item;
+ let dr=dir==="down"?1:0,dc=dir==="across"?1:0;
+ let entry={word,clue:clueText,r,c,dir,number:0};
+ for(let i=0;i<word.length;i++){
+  let rr=r+dr*i,cc=c+dc*i;
+  if(!board[rr][cc])board[rr][cc]={letter:word[i],user:"",across:null,down:null,number:0};
+  board[rr][cc][dir]=entry;
+ }
+ words.push(entry);
+}
+function generate(){
+ board=blankBoard();words=[];selected=null;showAnswers=false;
+ let list;
+ if($("topic").value==="custom"){
+  list=$("custom").value.split("\n").map(line=>{
+   let p=line.split(/[—–-]/);
+   return [(p.shift()||"").toUpperCase().replace(/Ё/g,"Е").replace(/[^А-ЯA-Z]/g,""),p.join("-").trim()];
+  }).filter(x=>x[0].length>=2&&x[0].length<=N&&x[1]);
+ }else list=[...BANK[$("topic").value]];
+ list.sort((a,b)=>b[0].length-a[0].length);
+ if(!list.length){$("status").textContent="Сначала добавь слова и подсказки.";render();return;}
+
+ let first=list.shift();
+ put(first,Math.floor(N/2),Math.floor((N-first[0].length)/2),"across");
+ let missed=[];
+ for(let item of list){
+  let best=null,score=-999;
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++)for(let dir of ["across","down"]){
+   let crosses=canPlace(item[0],r,c,dir);
+   if(crosses<0||(words.length&&crosses===0))continue;
+   let s=crosses*100-Math.abs(r-N/2)-Math.abs(c-N/2);
+   if(s>score){score=s;best={r,c,dir};}
+  }
+  if(best)put(item,best.r,best.c,best.dir);else missed.push(item[0]);
+ }
+ let num=0;
+ for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+  let x=board[r][c];if(!x)continue;
+  let a=x.across&&(c===0||!board[r][c-1]?.across);
+  let d=x.down&&(r===0||!board[r-1][c]?.down);
+  if(a||d){
+   num++;x.number=num;
+   if(a)x.across.number=num;
+   if(d)x.down.number=num;
+  }
+ }
+ $("status").textContent="Размещено слов: "+words.length+
+  (missed.length?". Не поместились: "+missed.join(", "):". Можно начинать!");
+ render();
+}
+
+function render(){
+ const grid=$("grid");
+ grid.innerHTML="";
+ grid.style.gridTemplateColumns=`repeat(${N},29px)`;
+ for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+  let x=board?.[r]?.[c];
+  if(!x){let b=document.createElement("div");b.className="block";grid.appendChild(b);continue;}
+  let wrap=document.createElement("div");wrap.className="cell";
+  if(x.number){
+   let n=document.createElement("span");n.className="num";n.textContent=x.number;wrap.appendChild(n);
+  }
+  let inp=document.createElement("input");
+  inp.type="text";inp.maxLength=1;inp.autocomplete="off";
+  inp.autocapitalize="characters";inp.spellcheck=false;
+  inp.inputMode="text";
+  inp.value=showAnswers?x.letter:x.user;
+  inp.dataset.r=r;inp.dataset.c=c;
+  inp.setAttribute("aria-label",`Строка ${r+1}, столбец ${c+1}`);
+  inp.addEventListener("focus",()=>{
+   selected={r,c};
+   if(!x[direction])direction=x.across?"across":"down";
+   highlightClues();
+  });
+  inp.addEventListener("input",()=>{
+   let v=inp.value.toLocaleUpperCase("ru-RU").replace(/ё/g,"е").replace(/[^А-ЯA-Z]/g,"");
+   inp.value=v.slice(-1);
+   x.user=inp.value;
+   if(v)moveNext(r,c);
+   updateStatus();
+  });
+  inp.addEventListener("keydown",e=>{
+   if(e.key==="Backspace"&&!inp.value){
+    movePrev(r,c);e.preventDefault();
+   }
+   if(e.key==="ArrowRight"){direction="across";move(r,c+1);e.preventDefault();}
+   if(e.key==="ArrowLeft"){direction="across";move(r,c-1);e.preventDefault();}
+   if(e.key==="ArrowDown"){direction="down";move(r+1,c);e.preventDefault();}
+   if(e.key==="ArrowUp"){direction="down";move(r-1,c);e.preventDefault();}
+  });
+  wrap.appendChild(inp);grid.appendChild(wrap);
+ }
+ renderClues("across",$("across"));
+ renderClues("down",$("down"));
+ updateStatus();
+}
+
+function move(r,c){
+ if(!cell(r,c))return;
+ let inp=document.querySelector(`input[data-r="${r}"][data-c="${c}"]`);
+ if(inp)inp.focus();
+}
+function moveNext(r,c){
+ let x=cell(r,c),entry=x?.[direction];
+ if(!entry)return;
+ let dr=direction==="down"?1:0,dc=direction==="across"?1:0;
+ let i=(r-entry.r)*dr+(c-entry.c)*dc;
+ if(i+1<entry.word.length)move(entry.r+dr*(i+1),entry.c+dc*(i+1));
+}
+function movePrev(r,c){
+ let x=cell(r,c),entry=x?.[direction];
+ if(!entry)return;
+ let dr=direction==="down"?1:0,dc=direction==="across"?1:0;
+ let i=(r-entry.r)*dr+(c-entry.c)*dc;
+ if(i>0)move(entry.r+dr*(i-1),entry.c+dc*(i-1));
+}
+function renderClues(dir,container){
+ container.innerHTML="";
+ words.filter(w=>w.dir===dir).sort((a,b)=>a.number-b.number).forEach(w=>{
+  let el=document.createElement("div");el.className="clue";
+  el.textContent=w.number+". "+w.clue;
+  el.onclick=()=>{
+   direction=dir;selected={r:w.r,c:w.c};move(w.r,w.c);
+  };
+  container.appendChild(el);
+ });
+}
+function highlightClues(){
+ for(let dir of ["across","down"]){
+  let entry=selected&&cell(selected.r,selected.c)?.[dir];
+  let container=$(dir);
+  [...container.children].forEach((el,i)=>{
+   let arr=words.filter(w=>w.dir===dir).sort((a,b)=>a.number-b.number);
+   el.classList.toggle("active",arr[i]===entry);
+  });
+}
+}
+function updateStatus(){
+ let total=0,filled=0;
+ if(board)for(let row of board)for(let x of row)if(x){
+  total++;if(x.user)filled++;
+ }
+ $("status").textContent=`Заполнено клеток: ${filled} из ${total}`;
+}
+
+$("topic").onchange=()=>{
+ $("customBox").hidden=$("topic").value!=="custom";
+};
+$("generate").onclick=generate;
+$("check").onclick=()=>{
+ let total=0,correct=0;
+ if(!board)return;
+ for(let row of board)for(let x of row)if(x){
+  total++;if(x.user===x.letter)correct++;
+ }
+ $("status").textContent=correct===total?
+  "🎉 Отлично! Всё правильно!":`Правильно: ${correct} из ${total} клеток.`;
+};
+$("answers").onclick=()=>{
+ showAnswers=true;
+ for(let row of board)for(let x of row)if(x)x.user=x.letter;
+ render();
+ $("status").textContent="Правильные ответы показаны.";
+};
+$("clear").onclick=()=>{
+ showAnswers=false;
+ for(let row of board)for(let x of row)if(x)x.user="";
+ render();
+ $("status").textContent="Все буквы очищены.";
+};
+
+// Дополнительная экранная клавиатура для телефона.
+const keys="АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+keys.split("").forEach(letter=>{
+ let b=document.createElement("button");b.textContent=letter;
+ b.onclick=()=>{
+  if(!selected)return;
+  let inp=document.querySelector(`input[data-r="${selected.r}"][data-c="${selected.c}"]`);
+  if(!inp)return;
+  inp.value=letter;
+  inp.dispatchEvent(new Event("input",{bubbles:true}));
+ };
+ $("keyboard").appendChild(b);
+});
+let back=document.createElement("button");
+back.textContent="⌫";back.onclick=()=>{
+ if(!selected)return;
+ let inp=document.querySelector(`input[data-r="${selected.r}"][data-c="${selected.c}"]`);
+ if(inp){inp.value="";inp.dispatchEvent(new Event("input",{bubbles:true}));inp.focus();}
+};
+$("keyboard").appendChild(back);
+
+generate();
+</script>
+</body>
+  </html>
